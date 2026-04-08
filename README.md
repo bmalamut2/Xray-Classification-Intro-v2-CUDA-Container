@@ -1,5 +1,8 @@
 # Xray Classification Intro v2
 
+## Google Slides
+- Shared and viewable with asu.edu account: https://docs.google.com/presentation/d/1lFKO8RH4EIzfaDfMfRoyrz_DMIkg2fyY95sbcK72ts4/edit?usp=sharing
+
 > [!WARNING]
 > **GPU Compatibility Notice**:
 > This project currently hard-pins PyTorch to version `2.5.1` (the default natively compatible with `+cu124`). Newer pip-installed PyTorch versions (like 2.6+) have dropped support for **Compute Capability 7.0** (which covers the **Tesla V100** GPUs present on our cluster). Attempting to use unpinned or latest versions of PyTorch on these GPUs will throw `CUDA error: no kernel image is available for execution on the device`. Always use the pinned versions in `Pytorch/requirements.txt`.

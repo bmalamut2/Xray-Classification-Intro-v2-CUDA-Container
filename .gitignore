@@ -180,3 +180,4 @@ huggingface/
 
 !.gitignore
 !**/plots-example/**/*.png
+!**/plots-ensemble-example/**/*.png
