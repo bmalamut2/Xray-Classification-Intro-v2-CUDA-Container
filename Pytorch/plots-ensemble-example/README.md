@@ -1,6 +1,4 @@
-# Results Summary
-
-## Best Test AUROC
+# Results Summary - Best Test AUROC
 each backbone at its OWN best test epoch, ensemble averages those preds
 
 ### AUROC
@@ -23,7 +21,9 @@ each backbone at its OWN best test epoch, ensemble averages those preds
 | Swin_base epoch used     |          7 |            14 |       7 |
 | Swin_base iter used      |      17500 |         15500 |   39000 |
 
-## Test AUROC @ Best Val
+---
+
+# Test AUROC @ Best Val
 each backbone at its OWN best val epoch, ensemble averages those test preds
 
 ### AUROC
