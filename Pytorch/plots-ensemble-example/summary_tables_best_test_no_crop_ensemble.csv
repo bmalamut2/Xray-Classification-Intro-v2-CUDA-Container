@@ -1,5 +1,0 @@
-,ChestXray14,CheXpert (top5),MIMIC (top5)
-ConvNext_base,0.8172,0.9167,0.8718
-Resnet50,0.7861,0.9082,0.8590
-Swin_base,0.7964,0.9132,0.8667
-Ensemble,0.8066,0.9146,0.8734
