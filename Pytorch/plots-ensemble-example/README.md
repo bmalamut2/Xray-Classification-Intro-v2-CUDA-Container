@@ -45,3 +45,29 @@ each backbone at its OWN best val epoch, ensemble averages those test preds
 | Resnet50 iter used       |      59000 |         86500 |   45000 |
 | Swin_base epoch used     |          7 |            15 |       4 |
 | Swin_base iter used      |      18500 |         16500 |   20000 |
+
+---
+
+## Plots — Best Test AUROC
+
+### ChestXray14
+![ChestXray14 best test](best-test/ChestXray14_test_auroc.png)
+
+### CheXpert
+![CheXpert best test](best-test/CheXpert_test_auroc.png)
+
+### MIMIC
+![MIMIC best test](best-test/MIMIC_test_auroc.png)
+
+---
+
+## Plots — Test AUROC at Best Val
+
+### ChestXray14
+![ChestXray14 test at best val](test-at-best-val/ChestXray14_test_at_best_val.png)
+
+### CheXpert
+![CheXpert test at best val](test-at-best-val/CheXpert_test_at_best_val.png)
+
+### MIMIC
+![MIMIC test at best val](test-at-best-val/MIMIC_test_at_best_val.png)
