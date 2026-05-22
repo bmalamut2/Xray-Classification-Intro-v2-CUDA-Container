@@ -45,6 +45,25 @@ You can execute any of the pre-configured training shell scripts inside the cont
 ./apptainer-for-cuda.sh exec ./run-xray14-convnext-base-best.local.sh
 ```
 
+### Ark+ Multi-Dataset Pretraining
+
+The PyTorch container also includes a native Ark+ pretraining entrypoint that cycles through MIMIC, CheXpert, and ChestXray14 with a shared encoder/projector and dataset-specific heads. It keeps the existing single-dataset trainer unchanged.
+
+Use one of the backbone-specific wrappers:
+```bash
+cd Pytorch
+./apptainer-run-arkplus-convnext-base.sh 4
+./apptainer-run-arkplus-resnet50.sh 4
+./apptainer-run-arkplus-swin_base.sh 4
+```
+
+For a quick destination smoke test:
+```bash
+./apptainer-run-arkplus-resnet50.sh 1 debug=true ark.pretrain_epochs=1 ark.global_batch_size=4 ark.eval_batch_size=4
+```
+
+All Ark+ settings are in `Pytorch/configs/config_arkplus.yaml` and can be overridden with Hydra arguments, including `dataset_dir`, `ark.global_batch_size`, `ark.pretrain_epochs`, and `model.pretrained`.
+
 ### On a Local Machine (e.g., Mac)
 
 If you are developing locally where the cluster's native dataset paths (`/data`, `/scratch`) do not exist, you can dynamically override the paths and inject your local dataset folders using the `EXTRA_MOUNTS` variable alongside your config overrides!

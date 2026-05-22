@@ -54,3 +54,6 @@ fire
 mmdet
 open-clip-torch
 nvidia-ml-py
+
+# Testing
+pytest

@@ -1,0 +1,138 @@
+defaults:
+  - model: swin_base
+  - override hydra/hydra_logging: none
+  - override hydra/job_logging: none
+  - _self_
+
+dataset_dir: /scratch/sejong/class-dataset/cxr-256
+
+hydra:
+  run:
+    dir: output-arkplus-${now:%Y%m%d}-${now:%H%M%S}
+  job:
+    chdir: true
+  output_subdir: ${run_name}/.hydra
+
+run_name: ArkPlus_${model.backbone}_${ark.optimizer}_${format_lr:${ark.lr}}_${oc.env:RUN_TIMESTAMP,run}
+verbose: true
+debug: false
+
+ark:
+  # Paper-like centralized Ark+ defaults. Override from CLI for smaller jobs.
+  optimizer: sgd
+  lr: 0.3
+  warmup_lr: 1e-6
+  min_lr: 1e-5
+  momentum: 0.9
+  weight_decay: 0.0
+  pretrain_epochs: 50
+  warmup_epochs: 20
+  teacher_momentum: 0.9
+  consistency_max_weight: 0.5
+  global_batch_size: 200
+  eval_batch_size: 100
+  workers: 8
+  seed: 42
+  log_every: 50
+  test_epoch: 10
+  save_test_metrics: true
+  validate_paths: true
+  validate_samples: 5
+  drop_last: false
+  resume: null
+
+  projector_features: 1376
+  use_mlp: false
+
+  preprocessing:
+    image_size: ${model.image_size}
+    resize: 256
+    normalize: ${model.normalize}
+
+  datasets:
+    - name: MIMIC
+      dataset_root: ${dataset_dir}
+      train_image_root: "${dataset_dir}/MIMIC_jpeg/physionet.org/files/mimic-cxr-jpg/2.0.0"
+      val_image_root: "${dataset_dir}/MIMIC_jpeg/physionet.org/files/mimic-cxr-jpg/2.0.0"
+      test_image_root: "${dataset_dir}/MIMIC_jpeg/physionet.org/files/mimic-cxr-jpg/2.0.0"
+      train_ann: data/mimic_cxr/train.csv
+      val_ann: data/mimic_cxr/val.csv
+      test_ann: data/mimic_cxr/test.csv
+      image_path_key: image_path
+      image_path_append: ""
+      uncertain_label: Ones
+      unknown_label: 0
+      task_type: multi-label classification
+      labels:
+        - Atelectasis
+        - Cardiomegaly
+        - Consolidation
+        - Edema
+        - Enlarged Cardiomediastinum
+        - Fracture
+        - Lung Lesion
+        - Lung Opacity
+        - No Finding
+        - Pleural Effusion
+        - Pleural Other
+        - Pneumonia
+        - Pneumothorax
+        - Support Devices
+
+    - name: CheXpert
+      dataset_root: ${dataset_dir}
+      train_image_root: "${dataset_dir}/CheXpert/"
+      val_image_root: "${dataset_dir}/CheXpert/"
+      test_image_root: "${dataset_dir}/CheXpert/"
+      train_ann: data/chexpert/train.csv
+      val_ann: data/chexpert/val.csv
+      test_ann: data/chexpert/test.csv
+      image_path_key: Path
+      image_path_append: ""
+      uncertain_label: LSR-Ones
+      unknown_label: 0
+      task_type: multi-label classification
+      labels:
+        - No Finding
+        - Enlarged Cardiomediastinum
+        - Cardiomegaly
+        - Lung Opacity
+        - Lung Lesion
+        - Edema
+        - Consolidation
+        - Pneumonia
+        - Atelectasis
+        - Pneumothorax
+        - Pleural Effusion
+        - Pleural Other
+        - Fracture
+        - Support Devices
+
+    - name: ChestXray14
+      dataset_root: ${dataset_dir}
+      train_image_root: "${dataset_dir}/nih_xray14/images/images/"
+      val_image_root: "${dataset_dir}/nih_xray14/images/images/"
+      test_image_root: "${dataset_dir}/nih_xray14/images/images/"
+      train_ann: data/xray14/train.csv
+      val_ann: data/xray14/val.csv
+      test_ann: data/xray14/test.csv
+      image_path_key: Path
+      image_path_append: ""
+      uncertain_label: Zeros
+      unknown_label: 0
+      task_type: multi-label classification
+      labels:
+        - Atelectasis
+        - Cardiomegaly
+        - Effusion
+        - Infiltration
+        - Mass
+        - Nodule
+        - Pneumonia
+        - Pneumothorax
+        - Consolidation
+        - Edema
+        - Emphysema
+        - Fibrosis
+        - Pleural_Thickening
+        - Hernia
