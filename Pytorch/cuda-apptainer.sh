@@ -93,7 +93,7 @@ case "$cmd" in
             echo "Error: Image '$IMAGE_NAME' not found. Run './apptainer-for-cuda.sh build' first."
             exit 1
         fi
-        echo "Executing command in container: $@"
+        echo "Executing command in container: $@" >&2
         apptainer exec $GPU_FLAG "${ENV_FLAGS[@]}" "${BINDS[@]}" --bind "$WORKSPACE_DIR:/workspace" --pwd /workspace "$WORKSPACE_DIR/$IMAGE_NAME" "$@"
         ;;
     help|--help|-h)

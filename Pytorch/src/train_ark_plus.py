@@ -3,7 +3,7 @@ import csv
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 import hydra
@@ -648,11 +648,16 @@ def _train_impl(cfg: DictConfig, rank: int, world_size: int, local_rank: int) ->
         from torch.nn.parallel import DistributedDataParallel as DDP
 
         if device_type == "cuda":
-            student = DDP(student, device_ids=[local_rank])
+          student = DDP(student, device_ids=[local_rank], find_unused_parameters=True)
         elif device_type == "hpu":
-            student = DDP(student, bucket_cap_mb=100, gradient_as_bucket_view=True)
+          student = DDP(
+              student,
+              bucket_cap_mb=100,
+              gradient_as_bucket_view=True,
+              find_unused_parameters=True,
+          )
         else:
-            student = DDP(student, bucket_cap_mb=100)
+          student = DDP(student, bucket_cap_mb=100, find_unused_parameters=True)
 
     optimizer = build_optimizer(cfg, student)
     scheduler = build_scheduler(cfg, optimizer)
@@ -740,49 +745,50 @@ def _train_impl(cfg: DictConfig, rank: int, world_size: int, local_rank: int) ->
                 )
             task_step += 1
 
-        if rank == 0:
-            val_losses = []
-            metric_rows = []
-            should_test = (
-                bool(cfg.ark.get("save_test_metrics", True))
-                and (
-                    epoch % int(cfg.ark.get("test_epoch", 10)) == 0
-                    or epoch == pretrain_epochs
-                    or debug
-                )
+        val_losses = []
+        metric_rows = []
+        should_test = (
+            bool(cfg.ark.get("save_test_metrics", True))
+            and (
+                epoch % int(cfg.ark.get("test_epoch", 10)) == 0
+                or epoch == pretrain_epochs
+                or debug
             )
-            for head_idx, task in enumerate(tasks):
-                val_loss = evaluate_loss(teacher, task, "val", head_idx, device)
-                val_losses.append(val_loss)
-                test_metrics = evaluate_predictions(teacher, task, "test", head_idx, device) if should_test else {}
-                per_label = test_metrics.get("per_label_auroc", "")
-                if isinstance(per_label, list):
-                    per_label = ";".join("nan" if np.isnan(x) else f"{x:.6f}" for x in per_label)
-                metric_rows.append(
-                    {
-                        "epoch": epoch,
-                        "global_step": global_step,
-                        "dataset": task["name"],
-                        "val_loss": f"{val_loss:.6f}",
-                        "test_mean_auroc": (
-                            f"{test_metrics['mean_auroc']:.6f}"
-                            if "mean_auroc" in test_metrics
-                            else ""
-                        ),
-                        "test_accuracy": (
-                            f"{test_metrics['accuracy']:.6f}" if "accuracy" in test_metrics else ""
-                        ),
-                        "test_per_label_auroc": per_label,
-                        "date_time": datetime.now().astimezone().isoformat(timespec="seconds"),
-                    }
-                )
+        )
+        for head_idx, task in enumerate(tasks):
+            val_loss = evaluate_loss(teacher, task, "val", head_idx, device)
+            val_losses.append(val_loss)
+            test_metrics = evaluate_predictions(teacher, task, "test", head_idx, device) if should_test else {}
+            per_label = test_metrics.get("per_label_auroc", "")
+            if isinstance(per_label, list):
+                per_label = ";".join("nan" if np.isnan(x) else f"{x:.6f}" for x in per_label)
+            metric_rows.append(
+                {
+                    "epoch": epoch,
+                    "global_step": global_step,
+                    "dataset": task["name"],
+                    "val_loss": f"{val_loss:.6f}",
+                    "test_mean_auroc": (
+                        f"{test_metrics['mean_auroc']:.6f}"
+                        if "mean_auroc" in test_metrics
+                        else ""
+                    ),
+                    "test_accuracy": (
+                        f"{test_metrics['accuracy']:.6f}" if "accuracy" in test_metrics else ""
+                    ),
+                    "test_per_label_auroc": per_label,
+                    "date_time": datetime.now().astimezone().isoformat(timespec="seconds"),
+                }
+            )
 
-            avg_val_loss = float(np.average(val_losses))
-            is_best = avg_val_loss < best_val_loss
-            if is_best:
-                best_val_loss = avg_val_loss
-            for row in metric_rows:
-                row["is_best"] = is_best
+        avg_val_loss = float(np.average(val_losses))
+        is_best = avg_val_loss < best_val_loss
+        if is_best:
+            best_val_loss = avg_val_loss
+        for row in metric_rows:
+            row["is_best"] = is_best
+
+        if rank == 0:
             append_metrics_csv(output_dir, metric_rows)
 
         scheduler.step()
@@ -834,7 +840,9 @@ def main(cfg: DictConfig) -> None:
             backend = "nccl"
         else:
             backend = "gloo"
-        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+        timeout_minutes = int(cfg.ark.get("ddp_timeout_minutes", 180))
+        dist.init_process_group(backend=backend, rank=rank, world_size=world_size, timeout=timedelta(minutes=timeout_minutes))
 
     try:
         _train_impl(cfg, rank, world_size, local_rank)

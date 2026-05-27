@@ -29,7 +29,7 @@ else
 fi
 
 if [ "$NUM_GPUS" -gt 1 ]; then
-    FREE_PORT=$("${APPTAINER_CMD[@]}" python -c 'import socket; s=socket.socket(); s.bind(("", 0)); print(s.getsockname()[1]); s.close()')
+    FREE_PORT=$("${APPTAINER_CMD[@]}" python -c 'import socket; s=socket.socket(); s.bind(("", 0)); print(s.getsockname()[1]); s.close()' | tail -n 1)
     "${APPTAINER_CMD[@]}" torchrun --nproc_per_node="$NUM_GPUS" --master_port="$FREE_PORT" src/train_ark_plus.py model="$MODEL" ark.global_batch_size="$GLOBAL_BATCH_SIZE" hydra.run.dir="$OUTPUT_DIR" "$@"
 else
     "${APPTAINER_CMD[@]}" python src/train_ark_plus.py model="$MODEL" ark.global_batch_size="$GLOBAL_BATCH_SIZE" hydra.run.dir="$OUTPUT_DIR" "$@"
