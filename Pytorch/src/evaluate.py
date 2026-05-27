@@ -101,7 +101,7 @@ def multilabel_metrics(
     Returns:
         Dictionary with mean_auroc
     """
-    mean_auroc = calculate_multilabel_metrics(probs, targets, device)
+    mean_auroc = calculate_multilabel_metrics(probs, targets, "cpu")
     return {
         "mean_auroc": mean_auroc,
     }
@@ -135,7 +135,7 @@ def calculate_subset_metrics(
     subset_targets = targets[:, label_indices]
     
     # Use the modular metrics calculation function
-    return calculate_multilabel_metrics(subset_probs, subset_targets, device)
+    return calculate_multilabel_metrics(subset_probs, subset_targets, "cpu")
 
 
 def evaluate(
@@ -226,10 +226,10 @@ def evaluate(
         raise ValueError(f"Evaluation sample mismatch: expected {expected_samples}, got {actual_samples}")
 
     # Calculate metrics using modular function (with automatic fallback)
-    mean_auroc = calculate_multilabel_metrics(probs, targets, device)
+    mean_auroc = calculate_multilabel_metrics(probs, targets, "cpu")
     
     # Calculate per-label AUROC
-    per_label_aurocs = calculate_per_label_auroc(probs, targets, device)
+    per_label_aurocs = calculate_per_label_auroc(probs, targets, "cpu")
     
     metrics = {
         "mean_auroc": mean_auroc,

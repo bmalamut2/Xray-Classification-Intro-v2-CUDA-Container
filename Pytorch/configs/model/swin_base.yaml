@@ -2,3 +2,6 @@ backbone: swin_base_patch4_window7_224
 pretrained: true
 image_size: 224
 normalize: imagenet
+arkplus_checkpoint: null
+arkplus_checkpoint_key: teacher
+arkplus_load_mode: encoder

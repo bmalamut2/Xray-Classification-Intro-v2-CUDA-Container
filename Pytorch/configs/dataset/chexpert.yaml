@@ -20,6 +20,10 @@ train_ann: data/chexpert/train.csv
 val_ann: data/chexpert/val.csv
 test_ann: data/chexpert/test.csv
 image_path_key: Path
+uncertain_label: LSR-Ones
+eval_uncertain_label: Ones
+unknown_label: 0
+apply_label_policy: false
 
 labels:
   - No Finding

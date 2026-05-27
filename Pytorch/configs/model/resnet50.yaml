@@ -2,3 +2,6 @@ backbone: resnet50
 pretrained: true
 image_size: 224
 normalize: imagenet
+arkplus_checkpoint: null
+arkplus_checkpoint_key: teacher
+arkplus_load_mode: encoder

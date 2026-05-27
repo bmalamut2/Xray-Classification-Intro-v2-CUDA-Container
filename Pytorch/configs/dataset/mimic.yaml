@@ -20,6 +20,10 @@ train_ann: data/mimic_cxr/train.csv
 val_ann: data/mimic_cxr/val.csv
 test_ann: data/mimic_cxr/test.csv
 image_path_key: image_path
+uncertain_label: Ones
+eval_uncertain_label: Ones
+unknown_label: 0
+apply_label_policy: false
 
 labels:
   - Atelectasis

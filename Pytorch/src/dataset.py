@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -18,6 +19,28 @@ def make_path(root: Optional[str], p: str, append: str = "") -> str:
     if root is None:
         return str(path)
     return str(Path(root) / path)
+
+
+def coerce_csv_label(value, uncertain_label: str = "Ignore", unknown_label: float = -1.0) -> float:
+    if pd.isna(value) or str(value).strip() == "":
+        return float(unknown_label)
+
+    value = float(value)
+    if value != -1:
+        return value
+
+    policy = uncertain_label.lower()
+    if policy in ("ignore", "keep"):
+        return -1.0
+    if policy == "ones":
+        return 1.0
+    if policy == "zeros":
+        return 0.0
+    if policy == "lsr-ones":
+        return random.uniform(0.55, 0.85)
+    if policy == "lsr-zeros":
+        return random.uniform(0.0, 0.3)
+    raise ValueError(f"Unsupported uncertain_label policy: {uncertain_label}")
 
 
 class CSVDataset(Dataset):
@@ -42,6 +65,10 @@ class CSVDataset(Dataset):
         image_root: Optional[str] = None,
         image_append: str = "",
         transform=None,
+        uncertain_label: str = "Ignore",
+        eval_uncertain_label: Optional[str] = None,
+        split: str = "train",
+        unknown_label: float = -1.0,
         validate_paths: bool = True,
         validate_samples: int = 5,
     ) -> None:
@@ -51,6 +78,13 @@ class CSVDataset(Dataset):
         self.image_root = image_root
         self.image_append = image_append
         self.transform = transform
+        self.split = split
+        self.uncertain_label = (
+            eval_uncertain_label
+            if split != "train" and eval_uncertain_label is not None
+            else uncertain_label
+        )
+        self.unknown_label = unknown_label
 
         # Store original paths before modification (for saving predictions)
         # Store both __key__ (if exists) and the original Path value
@@ -95,7 +129,7 @@ class CSVDataset(Dataset):
         labels = []
         for lbl in self.label_names:
             v = row.get(lbl, float("nan"))
-            labels.append(-1.0 if pd.isna(v) else float(v))
+            labels.append(coerce_csv_label(v, self.uncertain_label, self.unknown_label))
         labels = torch.tensor(labels, dtype=torch.float32)
 
         # Get original path and key from stored values

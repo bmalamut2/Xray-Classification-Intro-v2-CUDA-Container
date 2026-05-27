@@ -1,9 +1,9 @@
+import contextlib
+import logging
 import os
 import time
-import logging
-import contextlib
 from datetime import datetime
-from typing import Tuple, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -170,6 +170,78 @@ def build_model(backbone: str, num_classes: int, pretrained: bool = True) -> nn.
         raise ValueError(f"Unsupported backbone: {backbone} (timm name: {model_name})") from exc
 
 
+def _strip_module_prefix(key: str) -> str:
+    while key.startswith("module."):
+        key = key[len("module.") :]
+    return key
+
+
+def load_arkplus_encoder_checkpoint(
+    model: nn.Module,
+    checkpoint_path: str,
+    checkpoint_key: str = "teacher",
+    load_mode: str = "encoder",
+) -> Dict[str, object]:
+    if load_mode != "encoder":
+        raise ValueError(f"Unsupported Ark+ load mode: {load_mode}")
+
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    if isinstance(checkpoint, dict) and checkpoint_key in checkpoint:
+        state_dict = checkpoint[checkpoint_key]
+    elif isinstance(checkpoint, dict) and all(isinstance(v, torch.Tensor) for v in checkpoint.values()):
+        state_dict = checkpoint
+    else:
+        available = list(checkpoint.keys()) if isinstance(checkpoint, dict) else []
+        raise KeyError(
+            f"Checkpoint key '{checkpoint_key}' not found in {checkpoint_path}. "
+            f"Available keys: {available}"
+        )
+
+    target_state = model.state_dict()
+    loadable = {}
+    skipped_non_encoder = []
+    skipped_missing = []
+    skipped_shape = []
+
+    for raw_key, value in state_dict.items():
+        if not isinstance(value, torch.Tensor):
+            continue
+        key = _strip_module_prefix(raw_key)
+        if not key.startswith("encoder."):
+            skipped_non_encoder.append(key)
+            continue
+        target_key = key[len("encoder.") :]
+        if target_key not in target_state:
+            skipped_missing.append(target_key)
+            continue
+        if target_state[target_key].shape != value.shape:
+            skipped_shape.append((target_key, tuple(value.shape), tuple(target_state[target_key].shape)))
+            continue
+        loadable[target_key] = value
+
+    if not loadable:
+        raise ValueError(
+            f"No compatible encoder weights found in Ark+ checkpoint {checkpoint_path} "
+            f"with key '{checkpoint_key}'."
+        )
+
+    incompatible = model.load_state_dict(loadable, strict=False)
+    summary = {
+        "checkpoint": checkpoint_path,
+        "checkpoint_key": checkpoint_key,
+        "loaded": len(loadable),
+        "skipped_non_encoder": len(skipped_non_encoder),
+        "skipped_missing": len(skipped_missing),
+        "skipped_shape": len(skipped_shape),
+        "missing_after_load": len(incompatible.missing_keys),
+        "unexpected_after_load": len(incompatible.unexpected_keys),
+        "sample_loaded": list(loadable.keys())[:5],
+        "sample_missing": skipped_missing[:5],
+        "sample_shape": skipped_shape[:5],
+    }
+    return summary
+
+
 def make_run_id(dataset_name: str, backbone: str, opt_type: str, lr: float) -> str:
     """Create a run ID with timestamp."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -271,6 +343,13 @@ def _train_impl(cfg: DictConfig, rank: int = 0, world_size: int = 1, local_rank:
 
     train_tf = build_transforms(model_cfg["image_size"], model_cfg.get("normalize", "imagenet"), train=True)
     val_tf = build_transforms(model_cfg["image_size"], model_cfg.get("normalize", "imagenet"), train=False)
+    arkplus_checkpoint = model_cfg.get("arkplus_checkpoint")
+    use_label_policy = bool(arkplus_checkpoint) or bool(dataset_cfg.get("apply_label_policy", False))
+    label_policy = {
+        "uncertain_label": dataset_cfg.get("uncertain_label", "Ignore") if use_label_policy else "Ignore",
+        "eval_uncertain_label": dataset_cfg.get("eval_uncertain_label") if use_label_policy else None,
+        "unknown_label": float(dataset_cfg.get("unknown_label", -1.0)) if use_label_policy else -1.0,
+    }
 
     train_ds = CSVDataset(
         train_df,
@@ -279,6 +358,8 @@ def _train_impl(cfg: DictConfig, rank: int = 0, world_size: int = 1, local_rank:
         image_root=abs_or_none(dataset_cfg.get("train_image_root")),
         image_append=dataset_cfg.get("image_path_append", ""),
         transform=train_tf,
+        split="train",
+        **label_policy,
     )
     val_ds = CSVDataset(
         val_df,
@@ -287,6 +368,8 @@ def _train_impl(cfg: DictConfig, rank: int = 0, world_size: int = 1, local_rank:
         image_root=abs_or_none(dataset_cfg.get("val_image_root")),
         image_append=dataset_cfg.get("image_path_append", ""),
         transform=val_tf,
+        split="val",
+        **label_policy,
     )
     test_ds = CSVDataset(
         test_df,
@@ -295,6 +378,8 @@ def _train_impl(cfg: DictConfig, rank: int = 0, world_size: int = 1, local_rank:
         image_root=abs_or_none(dataset_cfg.get("test_image_root")),
         image_append=dataset_cfg.get("image_path_append", ""),
         transform=val_tf,
+        split="test",
+        **label_policy,
     )
 
     from torch.utils.data.distributed import DistributedSampler
@@ -327,6 +412,14 @@ def _train_impl(cfg: DictConfig, rank: int = 0, world_size: int = 1, local_rank:
     device_type = get_best_accelerator()
 
     model = build_model(model_cfg.get("backbone", "resnet50"), num_classes, model_cfg.get("pretrained", True))
+    arkplus_load_summary = None
+    if arkplus_checkpoint:
+        arkplus_load_summary = load_arkplus_encoder_checkpoint(
+            model,
+            get_absolute_path(str(arkplus_checkpoint)),
+            checkpoint_key=str(model_cfg.get("arkplus_checkpoint_key", "teacher")),
+            load_mode=str(model_cfg.get("arkplus_load_mode", "encoder")),
+        )
     
     if hasattr(model, "num_classes") and int(getattr(model, "num_classes")) != num_classes:
         raise ValueError(
@@ -470,6 +563,11 @@ def _train_impl(cfg: DictConfig, rank: int = 0, world_size: int = 1, local_rank:
     logger.info(f"  Test Image Root: {dataset_cfg.get('test_image_root', 'None')}")
     logger.info(f"  Image Path Key: {dataset_cfg.get('image_path_key', 'Path')}")
     logger.info(f"  Image Path Append: {dataset_cfg.get('image_path_append', '')}")
+    logger.info(f"  Label Policy Enabled: {use_label_policy}")
+    if use_label_policy:
+        logger.info(f"  Train Uncertain Label: {label_policy['uncertain_label']}")
+        logger.info(f"  Eval Uncertain Label: {label_policy['eval_uncertain_label']}")
+        logger.info(f"  Unknown Label: {label_policy['unknown_label']}")
     logger.info(f"  Number of Classes: {num_classes}")
     logger.info(f"  Labels: {label_names}")
     logger.info(f"  Train Samples: {len(train_df):,}")
@@ -481,6 +579,15 @@ def _train_impl(cfg: DictConfig, rank: int = 0, world_size: int = 1, local_rank:
     logger.info("Model Configuration:")
     logger.info(f"  Backbone: {backbone}")
     logger.info(f"  Pretrained: {model_cfg.get('pretrained', True)}")
+    logger.info(f"  Ark+ Checkpoint: {arkplus_checkpoint}")
+    if arkplus_load_summary:
+        logger.info(f"  Ark+ Checkpoint Key: {arkplus_load_summary['checkpoint_key']}")
+        logger.info(f"  Ark+ Loaded Encoder Tensors: {arkplus_load_summary['loaded']}")
+        logger.info(f"  Ark+ Skipped Non-Encoder Tensors: {arkplus_load_summary['skipped_non_encoder']}")
+        logger.info(f"  Ark+ Skipped Missing Tensors: {arkplus_load_summary['skipped_missing']}")
+        logger.info(f"  Ark+ Skipped Shape-Mismatched Tensors: {arkplus_load_summary['skipped_shape']}")
+        if arkplus_load_summary["sample_shape"]:
+            logger.info(f"  Ark+ Shape Mismatch Examples: {arkplus_load_summary['sample_shape']}")
     logger.info(f"  Image Size: {model_cfg.get('image_size', 224)}")
     logger.info(f"  Normalize: {model_cfg.get('normalize', 'imagenet')}")
     logger.info("")

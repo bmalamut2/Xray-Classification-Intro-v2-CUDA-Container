@@ -64,6 +64,19 @@ For a quick destination smoke test:
 
 All Ark+ settings are in `Pytorch/configs/config_arkplus.yaml` and can be overridden with Hydra arguments, including `dataset_dir`, `ark.global_batch_size`, `ark.pretrain_epochs`, and `model.pretrained`.
 
+### Ark+ Single-Dataset Fine-Tuning
+
+After Ark+ pretraining finishes, use the saved teacher checkpoint to fine-tune one dataset-specific classifier at a time. This is the targeted fine-tuning phase, not another multi-dataset pretraining run.
+
+```bash
+cd Pytorch
+./apptainer-run-arkplus-finetune.sh chestxray14 swin_base /path/to/best_teacher.pth.tar 1
+./apptainer-run-arkplus-finetune.sh chexpert resnet50 /path/to/best_teacher.pth.tar 4 train.batch_size=64
+./apptainer-run-arkplus-finetune.sh mimic convnext_base /path/to/last_teacher.pth.tar 1 train.epochs=100
+```
+
+The wrapper loads `checkpoint["teacher"]` into the selected model encoder, drops Ark+ projector and omni-head weights, and trains a fresh classifier head for the chosen dataset. Defaults follow the Ark+ fine-tuning examples: `sgd`, `lr=0.01`, `batch_size=64`, `epochs=200`, `scheduler=cosine_annealing`, and `weight_decay=0.0`; all can be overridden with Hydra arguments or `ARKPLUS_FINETUNE_*` environment variables.
+
 ### On a Local Machine (e.g., Mac)
 
 If you are developing locally where the cluster's native dataset paths (`/data`, `/scratch`) do not exist, you can dynamically override the paths and inject your local dataset folders using the `EXTRA_MOUNTS` variable alongside your config overrides!
