@@ -90,6 +90,7 @@ ark:
       image_path_key: Path
       image_path_append: ""
       uncertain_label: LSR-Ones
+      eval_uncertain_label: Ones
       unknown_label: 0
       task_type: multi-label classification
       labels:

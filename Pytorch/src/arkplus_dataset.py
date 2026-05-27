@@ -112,6 +112,8 @@ class ArkPlusCSVDataset(Dataset):
         student_transform=None,
         teacher_transform=None,
         uncertain_label: str = "Zeros",
+        eval_uncertain_label: Optional[str] = None,
+        split: str = "train",
         unknown_label: float = 0.0,
         validate_paths: bool = True,
         validate_samples: int = 5,
@@ -123,7 +125,12 @@ class ArkPlusCSVDataset(Dataset):
         self.image_append = image_append
         self.student_transform = student_transform
         self.teacher_transform = teacher_transform
-        self.uncertain_label = uncertain_label
+        self.split = split
+        self.uncertain_label = (
+            eval_uncertain_label
+            if split != "train" and eval_uncertain_label is not None
+            else uncertain_label
+        )
         self.unknown_label = unknown_label
 
         if "__key__" in self.df.columns:

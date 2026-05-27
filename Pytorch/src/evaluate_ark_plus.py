@@ -77,6 +77,8 @@ def build_eval_dataset(
         student_transform=transform,
         teacher_transform=transform,
         uncertain_label=task_cfg.get("uncertain_label", "Zeros"),
+        eval_uncertain_label=task_cfg.get("eval_uncertain_label"),
+        split=split,
         unknown_label=float(task_cfg.get("unknown_label", 0.0)),
         validate_paths=validate_paths,
     )

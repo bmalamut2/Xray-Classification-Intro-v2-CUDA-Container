@@ -192,6 +192,8 @@ def build_dataset(
         student_transform=student_tf,
         teacher_transform=teacher_tf,
         uncertain_label=task.get("uncertain_label", "Zeros"),
+        eval_uncertain_label=task.get("eval_uncertain_label"),
+        split=split,
         unknown_label=float(task.get("unknown_label", 0.0)),
         validate_paths=validate_paths,
         validate_samples=validate_samples,
@@ -488,8 +490,8 @@ def evaluate_predictions(
         acc = float((probs_np.argmax(axis=1) == targets_np.argmax(axis=1)).mean())
         return {"accuracy": acc}
 
-    mean_auroc = calculate_multilabel_metrics(probs_np, targets_np, device)
-    per_label_auroc = calculate_per_label_auroc(probs_np, targets_np, device)
+    mean_auroc = calculate_multilabel_metrics(probs_np, targets_np, "cpu")
+    per_label_auroc = calculate_per_label_auroc(probs_np, targets_np, "cpu")
     return {"mean_auroc": mean_auroc, "per_label_auroc": per_label_auroc}
 
 
@@ -605,11 +607,13 @@ def _train_impl(cfg: DictConfig, rank: int, world_size: int, local_rank: int) ->
     output_dir = run_name
     checkpoints_dir = os.path.join(output_dir, "checkpoints")
     ensure_dir(checkpoints_dir)
+    resume_path = cfg.ark.get("resume")
 
     if rank != 0:
         logger.setLevel(logging.ERROR)
     log_name = "training.log" if rank == 0 else f"training_rank{rank}.log"
-    file_handler = logging.FileHandler(os.path.join(output_dir, log_name), mode="w")
+    log_mode = "a" if resume_path else "w"
+    file_handler = logging.FileHandler(os.path.join(output_dir, log_name), mode=log_mode)
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -667,7 +671,6 @@ def _train_impl(cfg: DictConfig, rank: int, world_size: int, local_rank: int) ->
     global_step = 0
     task_step = 0
     best_val_loss = float("inf")
-    resume_path = cfg.ark.get("resume")
     if resume_path:
         start_epoch, global_step, task_step, best_val_loss = load_resume(
             get_absolute_path(str(resume_path)), student, teacher, optimizer, scheduler, device
