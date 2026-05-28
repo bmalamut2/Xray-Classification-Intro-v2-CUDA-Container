@@ -21,6 +21,16 @@ from arkplus_model import build_arkplus_model
 from utils import ensure_dir, get_best_accelerator
 
 
+TOP5_AUC_DATASETS = {"mimic", "chexpert"}
+TOP5_AUC_LABELS = [
+    "Atelectasis",
+    "Cardiomegaly",
+    "Consolidation",
+    "Edema",
+    "Pleural Effusion",
+]
+
+
 def get_absolute_path(path: Optional[str], base_dir: str) -> Optional[str]:
     if path is None:
         return None
@@ -92,6 +102,30 @@ def classification_loss(logits: torch.Tensor, targets: torch.Tensor, task_type: 
 
 def safe_filename(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_")
+
+
+def get_top5_auc(dataset_name: str, label_names: List[str], per_label_auc: object) -> Optional[float]:
+    if dataset_name.lower() not in TOP5_AUC_DATASETS or not isinstance(per_label_auc, list):
+        return None
+
+    label_to_index = {label_name: idx for idx, label_name in enumerate(label_names)}
+    missing_labels = [label_name for label_name in TOP5_AUC_LABELS if label_name not in label_to_index]
+    if missing_labels:
+        raise ValueError(f"{dataset_name} is missing top-5 AUC labels: {missing_labels}")
+
+    top5_values = np.array(
+        [per_label_auc[label_to_index[label_name]] for label_name in TOP5_AUC_LABELS],
+        dtype=np.float64,
+    )
+    return float(np.nanmean(top5_values)) if np.any(~np.isnan(top5_values)) else float("nan")
+
+
+def format_float_metric(value: object) -> object:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return "nan" if np.isnan(value) else f"{value:.6f}"
+    return value
 
 
 def compute_multilabel_roc(
@@ -235,6 +269,7 @@ def write_metrics_csv(output_path: str, rows: List[Dict[str, object]]) -> None:
         "samples",
         "loss",
         "mean_auroc",
+        "mean_auroc_top5",
         "accuracy",
         "per_label_auroc",
         "date_time",
@@ -416,6 +451,9 @@ def main() -> None:
                 num_labels=len(task_cfg.labels),
                 label_names=label_names,
             )
+            metrics["mean_auroc_top5"] = get_top5_auc(
+                task_name, label_names, metrics.get("per_label_auroc")
+            )
             per_label = metrics["per_label_auroc"]
             if isinstance(per_label, list):
                 per_label = ";".join("nan" if np.isnan(x) else f"{x:.6f}" for x in per_label)
@@ -428,11 +466,8 @@ def main() -> None:
                     "split": split,
                     "samples": metrics["samples"],
                     "loss": f"{metrics['loss']:.6f}",
-                    "mean_auroc": (
-                        f"{metrics['mean_auroc']:.6f}"
-                        if isinstance(metrics["mean_auroc"], float)
-                        else metrics["mean_auroc"]
-                    ),
+                    "mean_auroc": format_float_metric(metrics["mean_auroc"]),
+                    "mean_auroc_top5": format_float_metric(metrics["mean_auroc_top5"]),
                     "accuracy": (
                         f"{metrics['accuracy']:.6f}"
                         if isinstance(metrics["accuracy"], float)
@@ -442,10 +477,16 @@ def main() -> None:
                     "date_time": datetime.now().astimezone().isoformat(timespec="seconds"),
                 }
             )
+            top5_text = (
+                f" mean_auroc_top5={format_float_metric(metrics['mean_auroc_top5'])}"
+                if isinstance(metrics["mean_auroc_top5"], float)
+                else ""
+            )
             print(
                 f"{task_name} {split}: "
                 f"loss={metrics['loss']:.6f} "
                 f"mean_auroc={metrics['mean_auroc']} "
+                f"{top5_text} "
                 f"accuracy={metrics['accuracy']} "
                 f"samples={metrics['samples']}"
             )
@@ -502,6 +543,28 @@ def main() -> None:
                         "date_time": now,
                     }
                 )
+
+                if isinstance(metrics["mean_auroc_top5"], float):
+                    per_class_rows.append(
+                        {
+                            "checkpoint": args.checkpoint,
+                            "epoch": checkpoint.get("epoch", ""),
+                            "global_step": checkpoint.get("global_step", ""),
+                            "dataset": task_name,
+                            "split": split,
+                            "class_index": "top5",
+                            "class_name": "top5_mean_auroc",
+                            "positives": "",
+                            "negatives": "",
+                            "auc": (
+                                "nan"
+                                if np.isnan(metrics["mean_auroc_top5"])
+                                else f"{metrics['mean_auroc_top5']:.8f}"
+                            ),
+                            "macro_curve_auc": "",
+                            "date_time": now,
+                        }
+                    )
 
                 if not args.no_roc_curves:
                     checkpoint_dir = os.path.dirname(os.path.abspath(args.checkpoint))
