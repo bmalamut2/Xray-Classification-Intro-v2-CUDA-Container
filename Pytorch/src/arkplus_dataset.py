@@ -31,6 +31,8 @@ def coerce_arkplus_label(value, uncertain_label: str, unknown_label: float) -> f
         return value
 
     policy = uncertain_label.lower()
+    if policy in ("ignore", "keep"):
+        return -1.0
     if policy == "ones":
         return 1.0
     if policy == "zeros":

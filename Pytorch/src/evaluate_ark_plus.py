@@ -78,6 +78,7 @@ def build_eval_dataset(
         mode="valid" if split == "val" else "test",
     )
 
+    # Match the original single-dataset evaluator: uncertain and blank labels are ignored.
     return ArkPlusCSVDataset(
         csv_path=get_absolute_path(task_cfg[f"{split}_ann"], base_dir),
         image_key=task_cfg.get("image_path_key", "Path"),
@@ -86,10 +87,10 @@ def build_eval_dataset(
         image_append=task_cfg.get("image_path_append", ""),
         student_transform=transform,
         teacher_transform=transform,
-        uncertain_label=task_cfg.get("uncertain_label", "Zeros"),
-        eval_uncertain_label=task_cfg.get("eval_uncertain_label"),
+        uncertain_label="Ignore",
+        eval_uncertain_label=None,
         split=split,
-        unknown_label=float(task_cfg.get("unknown_label", 0.0)),
+        unknown_label=-1.0,
         validate_paths=validate_paths,
     )
 
